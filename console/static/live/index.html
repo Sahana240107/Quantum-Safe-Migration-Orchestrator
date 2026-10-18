@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QSMO Live Console</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">QSMO <span class="muted">Live Console</span></div>
+    <nav id="nav">
+      <a href="#/dashboard" data-page="dashboard">Dashboard</a>
+      <a href="#/topology" data-page="topology">Topology</a>
+      <a href="#/switches" data-page="switches">Switches</a>
+      <a href="#/timeline" data-page="timeline">Timeline</a>
+      <a href="#/monitoring" data-page="monitoring">Monitoring</a>
+      <a href="#/report" data-page="report">Report</a>
+    </nav>
+    <button id="pause" title="Freeze the screen so you can inspect it">⏸ Pause</button>
+    <input id="q" type="search" placeholder="Filter by switch name…" autocomplete="off">
+  </header>
+  <div id="banner"></div>
+  <main id="view"></main>
+  <div id="toasts"></div>
+  <div id="tip"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
