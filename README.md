@@ -27,6 +27,7 @@ QSMO Migration-Orchestrator is a research and demonstration system for coordinat
 - [Run tests](#run-tests)
 - [Demonstrated results](#demonstrated-results)
 - [Monitoring scenario](#monitoring-scenario)
+- [QSMO Live Console (web UI)](#qsmo-live-console-web-ui)
 - [QSMO Console API](#qsmo-console-api)
 - [Logs and troubleshooting](#logs-and-troubleshooting)
 - [Limitations](#limitations)
@@ -99,6 +100,9 @@ Migration-Orchestrator/
 ├── migration/           # Migration workflow, port registry, certificates, monitoring
 ├── optimizer/           # SGBM optimizer, capability tracker, experiments
 ├── console/             # FastAPI management-console API (+ ENDPOINTS.md)
+│   ├── live_app.py, live_data.py, routers/live.py   # Live Console: read-only API over the real runtime/
+│   └── static/live/     # Live Console web UI (plain HTML/JS/CSS, no build step)
+├── tools/               # Live Console helpers: dev_server.py, check_runtime.py, seed_runtime.py, optional monitor patches
 ├── tests/               # Integration, monitoring and any-topology tests
 ├── sync_topology.sh     # Regenerates flows / ports / Hybrid certs for the running topology
 ├── run_network.sh       # Starts the Mininet topology
@@ -191,6 +195,16 @@ Pick specific switches (this ignores the budget):
 
 ```bash
 ./run_migration.sh migrate --switches s3,s5
+```
+
+**Terminal 5 — Live Console (web UI, optional)**
+
+Run as your normal user (no `sudo`) once the monitor is up. Full details in [QSMO Live Console](#qsmo-live-console-web-ui).
+
+```bash
+source .venv/bin/activate
+python3 tools/check_runtime.py      # confirms the console can read what the sudo programs wrote
+python3 tools/dev_server.py         # then open http://localhost:8000
 ```
 
 Verify controller connections:
@@ -295,9 +309,89 @@ The integrated rollback demonstration deliberately injects synthetic values to e
 
 Because the inputs are intentionally outside the configured thresholds, the scenario exercises the automatic rollback behavior. **Do not describe these injected values as live production measurements.**
 
+## QSMO Live Console (web UI)
+
+A read-only browser dashboard for the **real** QSMO runtime. It never changes the network; it only reads what the
+controller, monitor and migration programs write to `runtime/` (`qsmo.db`, `topology.json`, `monitor_status.json`)
+and refreshes every 2 seconds.
+
+| Page | What it shows |
+|------|---------------|
+| Dashboard | Switch counts, Hybrid share, latest events |
+| Topology | Live graph (drag nodes, click a switch to inspect it); Hybrid links are marked as protected |
+| Switches | Sortable table of every switch with state and health |
+| Timeline | **Run matrix**: one row per switch, one column per migration run, one coloured cell per outcome (see below). List view available |
+| Monitoring | Monitor policy in plain English and a card per Hybrid switch with a latency sparkline and "% of limit" bar |
+| Report | Legacy-vs-Hybrid summary, chart and table. Buttons: Download report (HTML), Save as PDF, CSV |
+
+Timeline cell colours: **green** = migrated and still Hybrid · **amber** = migrated, then rolled back (shows time spent in
+Hybrid) · **red outline** = migration failed · **hatched green** = still Hybrid from an earlier run. Click a cell, a run
+header or a switch name for details. Use *Last 8 runs / Last 16 / All runs* to change how much history is shown.
+
+### Run it
+
+Start the network, controller and monitor first (see [Running the demonstration](#running-the-demonstration)), then in a
+new terminal **as your normal user**:
+
+```bash
+cd ~/ndc/Migration-Orchestrator
+source .venv/bin/activate
+python3 tools/check_runtime.py      # every line should show a tick
+python3 tools/dev_server.py         # standard library only, nothing extra to install
+```
+
+Open **http://localhost:8000** (press `Ctrl+Shift+R` after updating the files). Stop it with `Ctrl+C`; the network,
+controller and monitor are not affected.
+
+Alternative using FastAPI/uvicorn (also serves API docs at `/docs`):
+
+```bash
+pip install -r console/requirements.txt
+uvicorn console.live_app:app --host 0.0.0.0 --port 8000
+```
+
+Options: `python3 tools/dev_server.py --port 8080`. To read a different runtime folder, set `QSMO_RUNTIME=/path` for the
+console (and for whatever writes it).
+
+### Without the VM (demo data)
+
+```bash
+export QSMO_RUNTIME=/tmp/qsmo_fake
+python3 tools/seed_runtime.py --live &      # fake switches, latency, a rollback and a re-migration
+python3 tools/dev_server.py
+```
+
+### Optional monitor patches
+
+These make small, reversible edits to `migration/monitor_service.py` (a `.bak` copy is written; `--revert` undoes them).
+The console works without them.
+
+```bash
+python3 tools/patch_monitor_status.py       # adds the strike meter and monitor policy to the Monitoring page
+python3 tools/patch_monitor_thresholds.py   # makes the legacy-compare limit tunable (QSMO_LEGACY_PCT / QSMO_LEGACY_FLOOR_MS)
+```
+
+### Console tests
+
+```bash
+bash tests/test_frontend.sh          # needs node >= 18; starts a seeded server, no browser or npm needed
+python3 tests/test_live_data.py
+```
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| `check_runtime.py` says a file is missing | Start `./run_controller.sh` and `./run_monitor.sh` first |
+| `NOT readable (permission)` | The sudo programs created `runtime/` as root: `sudo chown -R $USER:$USER runtime` |
+| Page loads but "Timeline"/"Report" show an error | Restart `dev_server.py` after copying new files, then `Ctrl+Shift+R` |
+| Monitoring page is empty or shows "Waiting" | The monitor is not running or has exited. Check the `./run_monitor.sh` terminal |
+| `Address already in use` | A previous console is still running: `Ctrl+C` it or use `--port 8080` |
+
 ## QSMO Console API
 
-`console/` is a FastAPI backend (no authentication) for a management dashboard:
+`console/main.py` is the original FastAPI backend (no authentication, simulated data) for a management dashboard. It is
+separate from the Live Console above:
 
 ```bash
 pip install -r console/requirements.txt
